@@ -27,9 +27,29 @@ bun add file:/path/to/nestjs-zario
 
 ## Usage
 
-To override the default NestJS logging system, instantiate `NestZarioLogger` and pass it to `NestFactory.create` during application bootstrap.
+### Basic Usage (Zero Configuration)
 
-### Application Bootstrap (`main.ts`)
+You can register the logger service directly in your bootstrap file without importing the core `zario` package. It will automatically initialize a default Zario Logger instance.
+
+```typescript
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+import { NestZarioLogger } from 'nestjs-zario';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule, {
+    // Override the default NestJS logger
+    logger: new NestZarioLogger(),
+  });
+  
+  await app.listen(3000);
+}
+bootstrap();
+```
+
+### Custom Logger Usage
+
+If you need to configure custom settings (such as log level or colors), initialize a Zario `Logger` instance and pass it to the `NestZarioLogger` constructor.
 
 ```typescript
 import { NestFactory } from '@nestjs/core';
@@ -38,16 +58,16 @@ import { NestZarioLogger } from 'nestjs-zario';
 import { Logger } from 'zario';
 
 async function bootstrap() {
-  // Initialize your Zario Logger configuration
-  const zarioLogger = new Logger({
+  // Initialize custom Zario Logger
+  const customLogger = new Logger({
     level: 'debug',
     timestamp: true,
     colorize: true
   });
 
   const app = await NestFactory.create(AppModule, {
-    // Override the default NestJS logger
-    logger: new NestZarioLogger(zarioLogger),
+    // Override the default NestJS logger with custom configuration
+    logger: new NestZarioLogger(customLogger),
   });
   
   await app.listen(3000);
