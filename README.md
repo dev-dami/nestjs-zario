@@ -1,101 +1,88 @@
 # nestjs-zario
 
-NestJS custom logger service implementation powered by Zario.
-
-## Installation
-
-Install `nestjs-zario` along with its peer dependencies `zario` and `@nestjs/common` in your application:
+A NestJS logger service backed by Zario, with structured fields, Error diagnostics,
+context, trace strings, and shutdown hooks. Supports Nest 10/11; tested on Bun.
 
 ```bash
-# Using npm
-npm install nestjs-zario zario @nestjs/common
-
-# Using bun
 bun add nestjs-zario zario @nestjs/common
-
-# Using pnpm
-pnpm add nestjs-zario zario @nestjs/common
 ```
 
-### Local Development / Linking
+```ts
+import { NestFactory } from '@nestjs/core';
+import { NestZarioLogger } from 'nestjs-zario';
+import { AppModule } from './app.module';
 
-To link a local clone of `nestjs-zario` to your application during development, reference its absolute path:
+const logger = new NestZarioLogger();
+const app = await NestFactory.create(AppModule, { logger });
+await app.listen(3000);
+// At shutdown: await app.close(); await logger.close();
+```
+
+A manually created bootstrap logger is owned by your application. To have Nest
+manage the service lifecycle, register it in a module and use the DI instance.
+The optional `ZARIO_LOGGER` token accepts an existing logger:
+
+```ts
+import { Module } from '@nestjs/common';
+import { NestZarioLogger, ZARIO_LOGGER } from 'nestjs-zario';
+import { zario } from 'zario';
+
+@Module({
+  providers: [
+    { provide: ZARIO_LOGGER, useFactory: () => zario({ json: true }) },
+    NestZarioLogger,
+  ],
+  exports: [NestZarioLogger],
+})
+export class LoggingModule {}
+```
+
+Use `app.useLogger(app.get(NestZarioLogger))` after creating the app with
+`bufferLogs: true`. A DI-created service closes its own logger on application
+shutdown; an injected logger is only flushed, leaving ownership with its provider.
+
+## Calls
+
+```ts
+logger.log('saved', { userId: 42 }, 'UserService');
+logger.log({ event: 'saved', userId: 42 }, 'UserService');
+logger.error(new Error('failed'), 'UserService');
+logger.error('failed', 'Error: failed\n    at handler (...)', 'UserService');
+```
+
+`log` maps to `info`, `verbose` to `boring`; `warn`, `error`, `debug`, and `fatal`
+keep their levels. The final string parameter is context; error calls additionally
+accept a stack/trace string. Non-object extra values are retained under `params`.
+`flush()` and `close()` are awaitable.
+
+The service follows Nest's [custom logger contract](https://docs.nestjs.com/techniques/logger).
+
+## Development
+
+Bun is the package manager and test runner. Keep the core checkout at `../../zario`:
+
+```text
+workspace/
+  zario/
+  zario-adapters/
+    nestjs-zario/
+```
+
+Build the core first with `bun install --frozen-lockfile && bun run build` in
+`workspace/zario`. Then in this adapter:
 
 ```bash
-bun add file:/path/to/nestjs-zario
+bun install --frozen-lockfile
+bun run typecheck
+bun run lint
+bun test
+bun run build
 ```
 
-## Usage
-
-### Basic Usage (Zero Configuration)
-
-You can register the logger service directly in your bootstrap file without importing the core `zario` package. It will automatically initialize a default Zario Logger instance.
-
-```typescript
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
-import { NestZarioLogger } from 'nestjs-zario';
-
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
-    // Override the default NestJS logger
-    logger: new NestZarioLogger(),
-  });
-  
-  await app.listen(3000);
-}
-bootstrap();
-```
-
-### Custom Logger Usage
-
-If you need to configure custom settings (such as log level or colors), initialize a Zario `Logger` instance and pass it to the `NestZarioLogger` constructor.
-
-```typescript
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
-import { NestZarioLogger } from 'nestjs-zario';
-import { Logger } from 'zario';
-
-async function bootstrap() {
-  // Initialize custom Zario Logger
-  const customLogger = new Logger({
-    level: 'debug',
-    timestamp: true,
-    colorize: true
-  });
-
-  const app = await NestFactory.create(AppModule, {
-    // Override the default NestJS logger with custom configuration
-    logger: new NestZarioLogger(customLogger),
-  });
-  
-  await app.listen(3000);
-}
-bootstrap();
-```
-
-## Configuration
-
-The `NestZarioLogger` constructor accepts an optional `Logger` instance:
-
-```typescript
-constructor(logger?: Logger)
-```
-
-If no `Logger` instance is provided, `NestZarioLogger` will automatically instantiate a new `Logger` with `{ prefix: '[NestJS]' }`.
-
-## Log Level Mapping
-
-NestJS log methods are translated into Zario's core levels as follows:
-
-| NestJS Logger Method | Zario Log Level |
-| :--- | :--- |
-| `log` | `info` |
-| `warn` | `warn` |
-| `error` | `error` |
-| `debug` | `debug` |
-| `verbose` | `boring` |
+CI checks out and builds the pinned core revision before testing the adapter.
+The relative development dependency stays out of the published runtime contract;
+applications install the `zario` peer dependency normally. These changes require
+Zario 0.9.0; publish the core before releasing this adapter.
 
 ## License
 
